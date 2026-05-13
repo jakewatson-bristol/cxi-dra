@@ -1,0 +1,181 @@
+direction: down
+
+User: {
+  shape: person
+}
+
+Workload: {
+  direction: down
+  style.fill: "#e8eaf6"
+
+  Owning Resource: {
+    shape: sql_table
+    kind: "Deployment / StatefulSet / etc"
+  }
+
+  VNI Claim: {
+    shape: sql_table
+    type: "Persistent ResourceClaim"
+    deviceClassName: "cxi-vni"
+    shared: "all pods reference by name"
+  }
+
+  Device Claim Template: {
+    shape: sql_table
+    type: "ResourceClaimTemplate"
+    deviceClassName: "cxi-device (+ gpu-device)"
+    constraints: "matchAttribute numa.node"
+    per_pod: "ephemeral claim per pod"
+  }
+
+  Pods: {
+    direction: right
+    style.fill: "#c5cae9"
+    POD: {
+      shape: sql_table
+      status: "running / completed"
+      resourceClaims: "device template + VNI claim"
+    }
+  }
+
+  Owning Resource -> Pods.POD: "creates (many)"
+  Owning Resource -> VNI Claim: "creates once"
+}
+
+DRA Admission Webhook: {
+  direction: down
+  style.fill: "#fff3e0"
+
+  Webhook: {
+    shape: sql_table
+    role: "validates ResourceClaims"
+    validates: "claim parameters"
+    enforces: "VNI requires CXI device"
+  }
+}
+
+Kubernetes Scheduler: {
+  direction: down
+  style.fill: "#f3e5f5"
+
+  Structured Parameters: {
+    shape: sql_table
+    role: "allocates devices from ResourceSlices"
+    device_selection: "matches DeviceClass + selectors"
+    topology: "enforces matchAttribute constraints"
+    vni_allocation: "assigns VNI from pool"
+  }
+}
+
+DRA Node Driver: {
+  direction: down
+  style.fill: "#e3f2fd"
+
+  Kubelet Plugin: {
+    shape: sql_table
+    role: "device discovery + preparation"
+    discovers: "CXI devices via sysfs"
+    resolves: "CXI-to-HSN pairing"
+    publishes: "ResourceSlices with topology attributes"
+  }
+
+  NodePrepareResources: {
+    shape: sql_table
+    role: "configures devices for pod"
+    cdi_spec: "CXI device node + sysfs mounts"
+    vni_binding: "queries CRI for netns inode"
+    programs: "CXI service (VNI + netns inode)"
+  }
+
+  NodeUnprepareResources: {
+    shape: sql_table
+    role: "tears down on pod removal"
+    removes: "CXI service entries"
+  }
+
+  ResourceSlice CXI: {
+    shape: sql_table
+    devices: "cxi0, cxi1, ..."
+    attributes: "numa.node, pcie.root-complex"
+    hsn_mapping: "cxi0->hsn2, cxi1->hsn0, ..."
+  }
+
+  ResourceSlice VNI: {
+    shape: sql_table
+    pool: "available VNI range"
+    deviceClassName: "cxi-vni"
+  }
+
+  Kubelet Plugin -> ResourceSlice CXI: "publishes"
+  Kubelet Plugin -> ResourceSlice VNI: "publishes"
+  Kubelet Plugin -> NodePrepareResources: "on pod scheduled"
+  NodePrepareResources -> NodeUnprepareResources: "on pod removal"
+}
+
+Node Hardware: {
+  direction: right
+  style.fill: "#e8f5e9"
+
+  CXI Device: {
+    shape: sql_table
+    path: "/dev/cxi0"
+    type: "character device"
+    sysfs: "/sys/class/cxi_user/cxi0/..."
+  }
+
+  HSN Interface: {
+    shape: sql_table
+    path: "/sys/class/.../hsn2"
+    type: "network device"
+    metadata: "discovered via sysfs walk"
+  }
+
+  CXI Service: {
+    shape: sql_table
+    vni: "assigned VNI"
+    netns_inode: "pod network namespace"
+    service_id: "unique per binding"
+    status: "active / deleted"
+  }
+
+  CXI Device -> HSN Interface: "paired via sysfs topology"
+}
+
+Container: {
+  direction: down
+  style.fill: "#fce4ec"
+
+  Pod Container: {
+    shape: sql_table
+    devices: "/dev/cxi0 (via CDI)"
+    mounts: "sysfs subtree (via CDI)"
+    libfabric: "discovers HSN via sysfs paths"
+    vni_access: "restricted by CXI service"
+  }
+}
+
+# User flow
+User -> Workload.Owning Resource: "creates workload"
+User -> Workload.VNI Claim: "creates VNI claim"
+
+# Admission
+Workload.VNI Claim -> DRA Admission Webhook.Webhook: "validated at creation"
+Workload.Device Claim Template -> DRA Admission Webhook.Webhook: "validated at creation"
+DRA Admission Webhook.Webhook -> Workload.Pods.POD: "validates pod has CXI if VNI"
+
+# Scheduling
+Workload.Pods.POD -> Kubernetes Scheduler.Structured Parameters: "pending pod"
+DRA Node Driver.ResourceSlice CXI -> Kubernetes Scheduler.Structured Parameters: "available devices"
+DRA Node Driver.ResourceSlice VNI -> Kubernetes Scheduler.Structured Parameters: "available VNIs"
+Workload.Device Claim Template -> Kubernetes Scheduler.Structured Parameters: "device requirements"
+Workload.VNI Claim -> Kubernetes Scheduler.Structured Parameters: "VNI requirement"
+
+# Node preparation
+Kubernetes Scheduler.Structured Parameters -> DRA Node Driver.NodePrepareResources: "pod scheduled to node"
+DRA Node Driver.NodePrepareResources -> Node Hardware.CXI Service: "programs CXI service"
+DRA Node Driver.NodePrepareResources -> Container.Pod Container: "returns CDI spec"
+
+# Hardware relationships
+DRA Node Driver.Kubelet Plugin -> Node Hardware.CXI Device: "discovers at startup"
+Node Hardware.CXI Device -> Container.Pod Container: "mounted via CDI"
+Node Hardware.HSN Interface -> Container.Pod Container: "sysfs mounted via CDI"

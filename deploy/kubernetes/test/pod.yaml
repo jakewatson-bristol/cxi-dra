@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cxi-test
+  namespace: default
+spec:
+  restartPolicy: Never
+
+  # Each pod gets its own ephemeral claim from the template.
+  resourceClaims:
+    - name: cxi
+      resourceClaimTemplateName: cxi-claim-template
+
+  containers:
+    - name: workload
+      image: ubuntu:24.04
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "CXI devices visible:"; ls -la /dev/cxi* || echo "none";
+          echo "sysfs mount:"; ls /run/cxi/ || echo "none";
+          sleep 3600
+      resources:
+        claims:
+          - name: cxi

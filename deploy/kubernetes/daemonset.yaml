@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cxi-dra-driver
+  namespace: kube-system
+  labels:
+    app: cxi-dra-driver
+spec:
+  selector:
+    matchLabels:
+      app: cxi-dra-driver
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: cxi-dra-driver
+    spec:
+      serviceAccountName: cxi-dra-driver
+      hostPID: true  # required for future netns inode querying
+      priorityClassName: system-node-critical
+
+      # Only schedule on nodes with CXI hardware.
+      # Label nodes with: kubectl label node <node> feature.node.kubernetes.io/cxi=true
+      nodeSelector:
+        feature.node.kubernetes.io/cxi: "true"
+
+      containers:
+        - name: driver
+          image: localhost/cxi-dra-driver:dev
+          imagePullPolicy: Never
+          command:
+            - /cxi-dra-driver
+          args:
+            - --driver-name=cxi.slingshot.hpe.com
+            - --cdi-root=/var/run/cdi
+            - --plugin-dir=/var/lib/kubelet/plugins/cxi.slingshot.hpe.com
+            - --registrar-dir=/var/lib/kubelet/plugins_registry
+            - --mock-devices=2
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          securityContext:
+            privileged: true  # required to access /dev/cxi* and sysfs
+            runAsUser: 0
+          volumeMounts:
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: dev
+              mountPath: /dev
+            - name: kubelet-plugins
+              mountPath: /var/lib/kubelet/plugins/cxi.slingshot.hpe.com
+            - name: kubelet-registry
+              mountPath: /var/lib/kubelet/plugins_registry
+            - name: cdi
+              mountPath: /var/run/cdi
+            - name: mock-cxi
+              mountPath: /tmp/mock-cxi
+
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: kubelet-plugins
+          hostPath:
+            path: /var/lib/kubelet/plugins/cxi.slingshot.hpe.com
+            type: DirectoryOrCreate
+        - name: kubelet-registry
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+        - name: cdi
+          hostPath:
+            path: /var/run/cdi
+            type: DirectoryOrCreate
+        - name: mock-cxi
+          hostPath:
+            path: /tmp/mock-cxi
+            type: DirectoryOrCreate

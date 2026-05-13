@@ -1,0 +1,13 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: cxi-claim-template
+  namespace: default
+spec:
+  spec:
+    devices:
+      requests:
+        - name: cxi
+          exactly:
+            deviceClassName: cxi-device
+            count: 2
