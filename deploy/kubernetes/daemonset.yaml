@@ -27,8 +27,8 @@ spec:
 
       containers:
         - name: driver
-          image: localhost/cxi-dra-driver:dev
-          imagePullPolicy: Never
+          image: ghcr.io/jakewatson-bristol/cxi-dra:main
+          imagePullPolicy: Always
           command:
             - /cxi-dra-driver
           args:
@@ -36,7 +36,6 @@ spec:
             - --cdi-root=/var/run/cdi
             - --plugin-dir=/var/lib/kubelet/plugins/cxi.slingshot.hpe.com
             - --registrar-dir=/var/lib/kubelet/plugins_registry
-            - --mock-devices=2
           env:
             - name: NODE_NAME
               valueFrom:
@@ -61,8 +60,6 @@ spec:
               mountPath: /var/lib/kubelet/plugins_registry
             - name: cdi
               mountPath: /var/run/cdi
-            - name: mock-cxi
-              mountPath: /tmp/mock-cxi
 
       volumes:
         - name: sys
@@ -81,8 +78,4 @@ spec:
         - name: cdi
           hostPath:
             path: /var/run/cdi
-            type: DirectoryOrCreate
-        - name: mock-cxi
-          hostPath:
-            path: /tmp/mock-cxi
             type: DirectoryOrCreate
