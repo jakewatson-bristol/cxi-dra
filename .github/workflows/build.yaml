@@ -4,8 +4,20 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "internal/**"
   pull_request:
     branches: [main]
+    paths:
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "internal/**"
 
 env:
   REGISTRY: ghcr.io
