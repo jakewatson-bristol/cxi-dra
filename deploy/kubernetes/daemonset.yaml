@@ -28,7 +28,7 @@ spec:
       containers:
         - name: driver
           image: ghcr.io/jakewatson-bristol/cxi-dra:main
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command:
             - /cxi-dra-driver
           args:
